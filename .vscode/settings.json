@@ -1,0 +1,13 @@
+{
+  "[lean4]": {
+    "editor.fontFamily": "'JuliaMono', Consolas, monospace",
+    "editor.fontLigatures": false
+  },
+  "lean4.input.customTranslations": {
+    "land": "∧",
+    "lor": "∨",
+    "limp": "→",
+    "lnot": "¬",
+    "liff": "↔",
+  }
+}
