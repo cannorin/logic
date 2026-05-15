@@ -4,10 +4,10 @@
     "editor.fontLigatures": false
   },
   "lean4.input.customTranslations": {
-    "land": "∧",
-    "lor": "∨",
-    "limp": "→",
-    "lnot": "¬",
-    "liff": "↔",
+    "land": "⋏",
+    "lor": "⋎",
+    "limp": "🡒",
+    "lnot": "∼",
+    "liff": "🡘",
   }
 }
