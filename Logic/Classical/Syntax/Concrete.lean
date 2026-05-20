@@ -1,52 +1,46 @@
 import Mathlib.Tactic.DeriveEncodable
 import Logic.Utils.List
-
-abbrev Var := Nat
+import Logic.Classical.Syntax.Basic
 
 @[grind] inductive Fml : Type
   | bot : Fml
-  | var (n: Var) : Fml
+  | var (n: Nat) : Fml
   | conj (a b: Fml) : Fml
   | disj (a b: Fml) : Fml
   | imp (a b: Fml) : Fml
 deriving Inhabited, Repr, BEq, DecidableEq, Encodable
 
-@[simp, grind] abbrev Fml.neg (a : Fml) : Fml := imp a bot
-@[simp, grind] abbrev Fml.top : Fml := neg bot
-@[simp, grind] abbrev Fml.equiv (a b : Fml) : Fml := conj (imp a b) (imp b a)
-@[simp, grind] abbrev Fml.bigconj (xs : List Fml) : Fml := xs.foldr conj top
-@[simp, grind] abbrev Fml.bigdisj (xs : List Fml) : Fml := xs.foldr disj bot
-
-notation "⊤" => Fml.top
-notation "⊥" => Fml.bot
-prefix:58 "*" => Fml.var
-prefix:57 "⋏" => Fml.bigconj
-prefix:56 "⋎" => Fml.bigdisj
-prefix:55 "∼" => Fml.neg
-infixr:54 " ⋎ " => Fml.disj
-infixr:53 " ⋏ " => Fml.conj
-infixr:52 " 🡘 " => Fml.equiv
-infixr:51 " 🡒 " => Fml.imp
-
-@[simp, grind =] lemma Fml.bigconj_empty_is_top : bigconj [] = top := by simp
-@[simp, grind =] lemma Fml.bigdisj_empty_is_bot : bigdisj [] = bot := by simp
-
-open Fml
-
 @[simp, grind] def Fml.sub : Fml -> List Fml
   | bot => [ bot ]
   | var n => [ var n ]
-  | a 🡒 b => (a 🡒 b) :: (Fml.sub a ++ Fml.sub b)
-  | a ⋏ b => (a ⋏ b) :: (Fml.sub a ++ Fml.sub b)
-  | a ⋎ b => (a ⋎ b) :: (Fml.sub a ++ Fml.sub b)
+  | imp a b => (imp a b) :: (Fml.sub a ++ Fml.sub b)
+  | conj a b => (conj a b) :: (Fml.sub a ++ Fml.sub b)
+  | disj a b => (disj a b) :: (Fml.sub a ++ Fml.sub b)
+
+instance : Language Fml where
+  var := Fml.var
+  bot := Fml.bot
+  conj := Fml.conj
+  disj := Fml.disj
+  imp := Fml.imp
+  sub := Fml.sub
 
 @[simp] lemma Fml.mem_sub_self {a} : a ∈ Fml.sub a := by
   induction a with
   | bot => simp
   | var n => simp
-  | imp b c => simp
-  | conj a b => simp
-  | disj a b => simp
+  | imp b c =>
+    simp only [sub, List.mem_cons, List.mem_append]
+    left
+    trivial
+  | conj a b =>
+    simp only [sub, List.mem_cons, List.mem_append]
+    left
+    trivial
+  | disj a b =>
+    simp only [sub, List.mem_cons, List.mem_append]
+    left
+    trivial
 @[simp, grind! .] lemma Fml.sub_impL {a b} : Fml.sub a ⊆ Fml.sub (a 🡒 b) := by simp
 @[simp, grind! .] lemma Fml.sub_impR {a b} : Fml.sub b ⊆ Fml.sub (a 🡒 b) := by simp
 @[simp, grind! .] lemma Fml.sub_conjL {a b} : Fml.sub a ⊆ Fml.sub (a ⋏ b) := by simp
@@ -121,18 +115,8 @@ open Fml
         let ad := ihd memd
         exact List.Subset.trans ad sub_impR
 
-@[simp, grind] abbrev Theory := Set Fml
-
-@[simp] abbrev Theory.Closed (Γ : Theory) := ∀ a ∈ Γ, List.IsSubset (Fml.sub a) Γ
-
-@[simp, grind .] lemma Theory.union_of_closed_is_closed {Γ Δ : Theory}
-  : Γ.Closed -> Δ.Closed -> (Γ ∪ Δ).Closed := by grind
-
-@[simp, grind .] lemma Theory.sUnion_of_closed_is_closed {Γ : Set Theory}
-  : (∀ Γ' ∈ Γ, Theory.Closed Γ') -> Theory.Closed (Set.sUnion Γ) := by grind
-
 @[simp, grind .] lemma Fml.sub_toFinset_is_closed {a}
-  : Theory.Closed ((Fml.sub a).toFinset) := by
+  : Theory.Closed (L := Fml) ((Fml.sub a).toFinset) := by
   simp only [Theory.Closed, List.IsSubset, List.coe_toFinset, Set.mem_setOf_eq]
   intro b bmem
   exact Fml.sub_lift bmem

@@ -17,6 +17,19 @@ namespace List
 @[simp] theorem IsSubset_subset {a} {xs : List a} {ys zs : Set a}
   : List.IsSubset xs ys -> ys ⊆ zs -> List.IsSubset xs zs := by grind
 
+@[simp] theorem IsSubset_empty_is_nil {a} {xs : List a}
+  : List.IsSubset xs ∅ -> xs = [] := by
+  intro sub
+  rw [List.eq_nil_iff_forall_not_mem]
+  intro x
+  simp only [IsSubset] at sub
+  specialize sub x
+  by_contra mem
+  have : x ∈ ∅ := sub mem
+  contradiction
+
+@[simp] abbrev SubsetOf {a} (ys : Set a) := { xs : List a // IsSubset xs ys }
+
 @[simp] abbrev remove {a} [DecidableEq a] (xs : List a) (x : a) := xs.filter (· != x)
 
 @[simp] theorem remove_is_subset {a} [DecidableEq a] {xs : List a} {x : a}

@@ -1,36 +1,23 @@
 import Std
 import Logic.Utils.List
-import Logic.Classical.Syntax
-import Logic.Classical.Semantics
-import Logic.Classical.Hilbert.Basic
+import Logic.Classical.Syntax.Concrete
+import Logic.Classical.Semantics.Concrete
+import Logic.Classical.Hilbert.Concrete
 import Logic.Classical.Hilbert.Completeness
 
 theorem strong_soundness {Γ : Set Fml} {a : Fml} : ProvableFrom Γ a -> ValidUnder Γ a := by
-  intro ⟨xs, ⟨s, p⟩⟩ V cond
-  have cond : ∀ b ∈ xs, V.isTrue b := by
+  intro ⟨⟨⟨xs, sub⟩, p⟩⟩ V cond
+  have cond : ∀ b ∈ xs, V.IsTrue b := by
     intro b bmemxs
-    apply s at bmemxs
+    apply sub at bmemxs
     specialize cond b
     exact cond bmemxs
-  have v : Valid (⋏ xs 🡒 a) := soundness p
-  have x : V.isTrue (⋏ xs) := by
-    rw [Valuation.isTrue_bigconj]
+  have v : Valid (⋏ xs 🡒 a) := soundness (Nonempty.intro p)
+  have x : V.IsTrue (⋏ xs) := by
+    rw [V.Tarskean.bigconj]
     exact cond
+  specialize v V
   exact v x
-
-@[simp, grind] noncomputable def Fml.upto (n : Nat) := { a : Fml | Encodable.encode a ≤ n }
-
-@[simp, grind .] lemma Fml.mem_upto {a : Fml} : a ∈ Fml.upto (Encodable.encode a) := by grind
-
-@[simp, grind .] lemma Fml.mem_sUnion_upto_all {a : Fml}
-  : a ∈ Set.sUnion { Fml.upto n | n : Nat } := by
-  rw [Set.mem_sUnion]
-  by_contra hyp
-  push Not at hyp
-  have i : upto (Encodable.encode a) ∈ {x | ∃ n, upto n = x} := by grind
-  have : a ∉ Fml.upto (Encodable.encode a) := hyp (a |> Encodable.encode |> Fml.upto) i
-  have : a ∈ Fml.upto (Encodable.encode a) := Fml.mem_upto
-  contradiction
 
 @[simp, grind] noncomputable def Tableau.extend_by_code
   (t : Tableau) : Nat -> Tableau
@@ -217,7 +204,7 @@ theorem Tableau.maximal_is_consistent {t : Tableau}
   intro tcon
   by_contra h
   simp only [not_forall, not_not] at h
-  obtain ⟨xs, xs_sub_maximal_2, ys, ys_sub_maximal_1, p⟩ := h
+  obtain ⟨xs, xs_sub_maximal_2, ⟨⟨ys, ys_sub_maximal_1⟩, p⟩⟩ := h
   have xs_sub_maximal : List.IsSubset xs t.maximal.abs := by grind
   have ys_sub_maximal : List.IsSubset ys t.maximal.abs := by grind
   let ⟨m, mcond⟩ :=
@@ -266,12 +253,12 @@ theorem Tableau.maximal_is_consistent {t : Tableau}
   push Not
   exists xs
   refine ⟨xs_sub_u_2, ?_⟩
-  exists ys
+  exists ⟨ys, ys_sub_u_1⟩
 
 lemma Tableau.maximal_is_closed {t : Tableau}
   : t.maximal.Closed := by grind
 
-theorem strong_completeness {Γ : Theory} {a : Fml}
+theorem strong_completeness {Γ : Set Fml} {a : Fml}
   : ValidUnder Γ a -> ProvableFrom Γ a := by
   contrapose
   intro npa
@@ -284,11 +271,11 @@ theorem strong_completeness {Γ : Theory} {a : Fml}
       rw [eq]
       by_contra pxs
       have fa : ∀ x ∈ xs, x = a := sub
-      let pxsa : ProvableFrom Γ (⋎ xs 🡒 a) :=
-        Provable.bigdisj_e_same fa
-        |> provable_iff_provableFromEmpty.mp
-        |> ProvableFrom.weakening (by simp)
-      have : ProvableFrom Γ a := ProvableFrom.mp pxsa pxs
+      let pxsa : Proof.Contextual Γ (⋎ xs 🡒 a) :=
+        Hilbert.bigdisj_e_same fa
+        |> Hilbert.toContextual Γ
+      have : ProvableFrom Γ a :=
+        Hilbert.Contextual.mp pxsa pxs.some |> Nonempty.intro
       contradiction
     have conmax := Tableau.maximal_is_consistent cont
     exact ⟨
@@ -297,7 +284,7 @@ theorem strong_completeness {Γ : Theory} {a : Fml}
       Tableau.consistent_and_closed_is_saturated conmax Tableau.maximal_is_closed
     ⟩
   have ⟨V, vtrue, vfalse⟩ := Tableau.realizable_iff_extendable.mpr extendable
-  rw [not_forall]
+  rw [ValidUnder, not_forall]
   exists V
   push Not
   constructor

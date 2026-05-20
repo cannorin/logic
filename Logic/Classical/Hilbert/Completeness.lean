@@ -1,13 +1,15 @@
 import Std
 import Logic.Utils.List
-import Logic.Classical.Syntax
-import Logic.Classical.Semantics
+import Logic.Classical.Syntax.Concrete
+import Logic.Classical.Semantics.Concrete
+import Logic.Classical.Hilbert.Concrete
 import Logic.Classical.Tableau
-import Logic.Classical.Hilbert.Basic
+
+open Hilbert
 
 theorem soundness {a : Fml} : Provable a -> Valid a := by
   intro h
-  induction h with
+  induction h.some with
   | k a b =>
     intro V hA _
     exact hA
@@ -37,11 +39,15 @@ theorem soundness {a : Fml} : Provable a -> Valid a := by
     | inr hB => exact hBC hB
   | dne a =>
     intros V hnna
-    rw [Valuation.isTrue_neg, Valuation.isTrue_neg, not_not] at hnna
+    rw [V.Tarskean.neg, V.Tarskean.neg, not_not] at hnna
     exact hnna
   | mp hAB hA ihAB ihA =>
     intro V
-    apply ihAB ihA
+    let ihAB := ihAB (Nonempty.intro hAB)
+    let ihA := ihA (Nonempty.intro hA)
+    specialize ihAB V
+    specialize ihA V
+    exact ihAB ihA
 
 lemma bot_is_not_provable : ¬ Provable ⊥ := by
   apply not_imp_not.mpr soundness
@@ -58,7 +64,7 @@ lemma Tableau.consistent_is_disjoint {t : Tableau} : t.Consistent -> Tableau.Dis
     specialize con []
     have e : List.IsSubset [] t.2 := by simp
     have : ¬ ProvableFrom t.1 ⊥ := con e
-    have : ProvableFrom t.1 ⊥ := ProvableFrom.initial mem
+    have : ProvableFrom t.1 ⊥ := Contextual.initial mem |> Nonempty.intro
     contradiction
   case left =>
     by_contra nonempty
@@ -71,9 +77,11 @@ lemma Tableau.consistent_is_disjoint {t : Tableau} : t.Consistent -> Tableau.Dis
       exact xmem.right
     have : ¬ ProvableFrom t.1 (⋎ [x]) := con sub
     have : ProvableFrom t.1 (⋎ [x]) := by
-      let p1 := ProvableFrom.initial xmem.left
-      let p2 := Provable.disj_i1 x ⊥ |> Provable.to_ProvableFrom t.1
-      exact ProvableFrom.mp p2 p1
+      let p1 : Proof.Contextual _ _ :=
+        Contextual.initial xmem.left
+      let p2 : Proof.Contextual _ _ :=
+        disj_i1 x ⊥ |> toContextual t.1
+      exact Contextual.mp p2 p1 |> Nonempty.intro
     contradiction
 
 @[grind] noncomputable def Tableau.extend (t : Tableau) (a : Fml) := by
@@ -117,29 +125,29 @@ lemma Tableau.extend_is_consistent {t : Tableau} {a : Fml}
         case left => exact xsrsubt
         case right => trivial
       contradiction
-    rw [<- deduction] at pxs
+    apply Nonempty.map Contextual.deduction_right at pxs
     let zs := List.remove ys a
     let ws := xs ++ zs
     have p : ProvableFrom tr.1 (⋎ ws) := by
-      let h1 := Provable.disj_e a (⋎ ws) (⋎ ws) |> Provable.imp_flip
-      let h2 := Provable.i (⋎ ws)
-      let p := Provable.mp h1 h2 |> Provable.to_ProvableFrom tr.1
-      let paws : ProvableFrom tr.1 (a 🡒 ⋎ ws) := by
+      let h1 : Proof _ := disj_e a (⋎ ws) (⋎ ws) |> imp_exchange
+      let h2 : Proof _ := i (⋎ ws)
+      let p : Proof.Contextual _ _ := mp h1 h2 |> toContextual tr.1
+      let paws : Proof.Contextual tr.1 (a 🡒 ⋎ ws) := by
         have sub : xs ⊆ ws := by
           apply List.subset_append_left
-        exact ProvableFrom.syll
-          pxs
-          (Provable.bigdisj_i_many sub |> Provable.to_ProvableFrom tr.1)
-      let pwsa : ProvableFrom tr.1 (a ⋎ (⋎ ws)) := by
+        exact Contextual.syll
+          pxs.some
+          (bigdisj_i_many sub |> toContextual tr.1)
+      let pwsa : Proof.Contextual tr.1 (a ⋎ (⋎ ws)) := by
         have sub : ys ⊆ a :: ws := by
           intro y ymem
           simp only [List.mem_cons, ws, zs]
           suffices cond : y = a ∨ y ∈ ys.remove a from by grind
           exact List.mem_imp_eq_or_remove ymem
-        exact ProvableFrom.mp
-          (Provable.bigdisj_i_many sub |> Provable.to_ProvableFrom tr.1)
-          pys
-      exact ProvableFrom.mp (ProvableFrom.mp p paws) pwsa
+        exact Contextual.mp
+          (bigdisj_i_many sub |> toContextual tr.1)
+          pys.some
+      exact Contextual.mp (Contextual.mp p paws) pwsa |> Nonempty.intro
     have sub : List.IsSubset ws t.2 := by
       intro w
       rw [List.mem_append]
@@ -226,10 +234,6 @@ theorem Tableau.consistent_and_closed_is_saturated {t : Tableau}
     specialize amem b
     have bmem : b ∈ a.sub := b_sub_a Fml.mem_sub_self
     exact amem bmem
-  have singleton_subset {a: Fml} {Γ: Set Fml}
-    : a ∈ Γ -> List.IsSubset [a] Γ := by simp
-  have doubleton_subset {a b: Fml} {Γ: Set Fml}
-    : a ∈ Γ -> b ∈ Γ -> List.IsSubset [a, b] Γ := by grind
   constructor
   case conjL =>
     intro a b ab_mem_1
@@ -244,13 +248,12 @@ theorem Tableau.consistent_and_closed_is_saturated {t : Tableau}
         rw [not_forall]
         exists [a]
         push Not
-        refine ⟨singleton_subset a_mem_2, ?_⟩
-        exists [a ⋏ b]
-        refine ⟨singleton_subset ab_mem_1, ?_⟩
-        have h1 : Provable (⋏ [a ⋏ b] 🡒 a ⋏ b) := Provable.bigconj_e_singleton (a ⋏ b)
-        have h2 : Provable (a ⋏ b 🡒 a) := Provable.conj_e1 a b
-        have h3 : Provable (a 🡒 ⋎ [a]) := Provable.bigdisj_i_singleton a
-        exact Provable.syll (Provable.syll h1 h2) h3
+        refine ⟨by grind, ?_⟩
+        exists ⟨[a ⋏ b], by grind⟩
+        have h1 : Proof (⋏ [a ⋏ b] 🡒 a ⋏ b) := bigconj_e_singleton (a ⋏ b)
+        have h2 : Proof (a ⋏ b 🡒 a) := conj_e1 a b
+        have h3 : Proof (a 🡒 ⋎ [a]) := bigdisj_i_singleton a
+        exact syll (syll h1 h2) h3
       contradiction
     case right =>
       by_contra b_mem_2
@@ -258,13 +261,12 @@ theorem Tableau.consistent_and_closed_is_saturated {t : Tableau}
         rw [not_forall]
         exists [b]
         push Not
-        refine ⟨singleton_subset b_mem_2, ?_⟩
-        exists [a ⋏ b]
-        refine ⟨singleton_subset ab_mem_1, ?_⟩
-        have h1 : Provable (⋏ [a ⋏ b] 🡒 a ⋏ b) := Provable.bigconj_e_singleton (a ⋏ b)
-        have h2 : Provable (a ⋏ b 🡒 b) := Provable.conj_e2 a b
-        have h3 : Provable (b 🡒 ⋎ [b]) := Provable.bigdisj_i_singleton b
-        exact Provable.syll (Provable.syll h1 h2) h3
+        refine ⟨by grind, ?_⟩
+        exists ⟨[a ⋏ b], by grind⟩
+        have h1 : Proof (⋏ [a ⋏ b] 🡒 a ⋏ b) := bigconj_e_singleton (a ⋏ b)
+        have h2 : Proof (a ⋏ b 🡒 b) := conj_e2 a b
+        have h3 : Proof (b 🡒 ⋎ [b]) := bigdisj_i_singleton b
+        exact syll (syll h1 h2) h3
       contradiction
   case conjR =>
     intro a b ab_mem_2
@@ -280,12 +282,11 @@ theorem Tableau.consistent_and_closed_is_saturated {t : Tableau}
       rw [not_forall]
       exists [a ⋏ b]
       push Not
-      refine ⟨singleton_subset ab_mem_2, ?_⟩
-      exists [a, b]
-      refine ⟨doubleton_subset a_mem_1 b_mem_1, ?_⟩
-      have h1 : Provable (⋏ [a, b] 🡒 a ⋏ b) := Provable.bigconj_e_conj a b
-      have h2 : Provable (a ⋏ b 🡒 ⋎ [a ⋏ b]) := Provable.bigdisj_i_singleton (a ⋏ b)
-      exact Provable.syll h1 h2
+      refine ⟨by grind, ?_⟩
+      exists ⟨[a, b], by grind⟩
+      have h1 : Proof (⋏ [a, b] 🡒 a ⋏ b) := bigconj_e_conj a b
+      have h2 : Proof (a ⋏ b 🡒 ⋎ [a ⋏ b]) := bigdisj_i_singleton (a ⋏ b)
+      exact syll h1 h2
     contradiction
   case disjL =>
     intro a b ab_mem_1
@@ -301,12 +302,11 @@ theorem Tableau.consistent_and_closed_is_saturated {t : Tableau}
       rw [not_forall]
       exists [a, b]
       push Not
-      refine ⟨doubleton_subset a_mem_2 b_mem_2, ?_⟩
-      exists [a ⋎ b]
-      refine ⟨singleton_subset ab_mem_1, ?_⟩
-      have h1 : Provable (⋏ [a ⋎ b] 🡒 (a ⋎ b)) := Provable.bigconj_e_singleton (a ⋎ b)
-      have h2 : Provable (a ⋎ b 🡒 ⋎ [a, b]) := Provable.bigdisj_i_disj a b
-      exact Provable.syll h1 h2
+      refine ⟨by grind, ?_⟩
+      exists ⟨[a ⋎ b], by grind⟩
+      have h1 : Proof (⋏ [a ⋎ b] 🡒 (a ⋎ b)) := bigconj_e_singleton (a ⋎ b)
+      have h2 : Proof (a ⋎ b 🡒 ⋎ [a, b]) := bigdisj_i_disj a b
+      exact syll h1 h2
     contradiction
   case disjR =>
     intro a b ab_mem_2
@@ -321,13 +321,12 @@ theorem Tableau.consistent_and_closed_is_saturated {t : Tableau}
         rw [not_forall]
         exists [a ⋎ b]
         push Not
-        refine ⟨singleton_subset ab_mem_2, ?_⟩
-        exists [a]
-        refine ⟨singleton_subset a_mem_1, ?_⟩
-        have h1 : Provable (⋏ [a] 🡒 a) := Provable.bigconj_e_singleton a
-        have h2 : Provable (a 🡒 a ⋎ b) := Provable.disj_i1 a b
-        have h3 : Provable (a ⋎ b 🡒 ⋎ [a ⋎ b]) := Provable.bigdisj_i_singleton (a ⋎ b)
-        exact Provable.syll (Provable.syll h1 h2) h3
+        refine ⟨by grind, ?_⟩
+        exists ⟨[a], by grind⟩
+        have h1 : Proof (⋏ [a] 🡒 a) := bigconj_e_singleton a
+        have h2 : Proof (a 🡒 a ⋎ b) := disj_i1 a b
+        have h3 : Proof (a ⋎ b 🡒 ⋎ [a ⋎ b]) := bigdisj_i_singleton (a ⋎ b)
+        exact syll (syll h1 h2) h3
       contradiction
     case right =>
       by_contra b_mem_1
@@ -335,13 +334,12 @@ theorem Tableau.consistent_and_closed_is_saturated {t : Tableau}
         rw [not_forall]
         exists [a ⋎ b]
         push Not
-        refine ⟨singleton_subset ab_mem_2, ?_⟩
-        exists [b]
-        refine ⟨singleton_subset b_mem_1, ?_⟩
-        have h1 : Provable (⋏ [b] 🡒 b) := Provable.bigconj_e_singleton b
-        have h2 : Provable (b 🡒 a ⋎ b) := Provable.disj_i2 a b
-        have h3 : Provable (a ⋎ b 🡒 ⋎ [a ⋎ b]) := Provable.bigdisj_i_singleton (a ⋎ b)
-        exact Provable.syll (Provable.syll h1 h2) h3
+        refine ⟨by grind, ?_⟩
+        exists ⟨[b], by grind⟩
+        have h1 : Proof (⋏ [b] 🡒 b) := bigconj_e_singleton b
+        have h2 : Proof (b 🡒 a ⋎ b) := disj_i2 a b
+        have h3 : Proof (a ⋎ b 🡒 ⋎ [a ⋎ b]) := bigdisj_i_singleton (a ⋎ b)
+        exact syll (syll h1 h2) h3
       contradiction
   case impL =>
     intro a b ab_mem_1
@@ -357,13 +355,12 @@ theorem Tableau.consistent_and_closed_is_saturated {t : Tableau}
       rw [not_forall]
       exists [b]
       push Not
-      refine ⟨singleton_subset b_mem_2, ?_⟩
-      exists [a, a 🡒 b]
-      refine ⟨doubleton_subset a_mem_1 ab_mem_1, ?_⟩
-      have h1 : Provable (⋏ [a, a 🡒 b] 🡒 (a ⋏ (a 🡒 b))) := Provable.bigconj_e_conj a (a 🡒 b)
-      have h2 : Provable ((a ⋏ (a 🡒 b)) 🡒 b) := Provable.axiomatized_mp a b
-      have h3 : Provable (b 🡒 ⋎ [b]) := Provable.bigdisj_i_singleton b
-      exact Provable.syll (Provable.syll h1 h2) h3
+      refine ⟨by grind, ?_⟩
+      exists ⟨[a, a 🡒 b], by grind⟩
+      have h1 : Proof (⋏ [a, a 🡒 b] 🡒 (a ⋏ (a 🡒 b))) := bigconj_e_conj a (a 🡒 b)
+      have h2 : Proof ((a ⋏ (a 🡒 b)) 🡒 b) := axiomatized_mp a b
+      have h3 : Proof (b 🡒 ⋎ [b]) := bigdisj_i_singleton b
+      exact syll (syll h1 h2) h3
     contradiction
   case impR =>
     intro a b ab_mem_2
@@ -378,14 +375,13 @@ theorem Tableau.consistent_and_closed_is_saturated {t : Tableau}
         rw [not_forall]
         exists [a, a 🡒 b]
         push Not
-        refine ⟨doubleton_subset a_mem_2 ab_mem_2, ?_⟩
-        exists []
-        refine ⟨by simp, ?_⟩
-        have h1 := Provable.lin a b
-        have h2 := Provable.bigdisj_i_disj a (a 🡒 b)
-        have h3 := Provable.mp h2 h1
-        have h4 := Provable.k (⋎ [a, a 🡒 b]) ⊤
-        exact Provable.mp h4 h3
+        refine ⟨by grind, ?_⟩
+        exists ⟨[], by grind⟩
+        have h1 : Proof _ := lin a b
+        have h2 : Proof _ := bigdisj_i_disj a (a 🡒 b)
+        have h3 : Proof _ := mp h2 h1
+        have h4 : Proof _ := k (⋎ [a, a 🡒 b]) ⊤
+        exact mp h4 h3
       contradiction
     | inr b_nmem_2 =>
       have b_mem_1 := Or.resolve_right b_mem b_nmem_2
@@ -393,12 +389,11 @@ theorem Tableau.consistent_and_closed_is_saturated {t : Tableau}
         rw [not_forall]
         exists [a 🡒 b]
         push Not
-        refine ⟨singleton_subset ab_mem_2, ?_⟩
-        exists [b]
-        refine ⟨singleton_subset b_mem_1, ?_⟩
-        have h1 := Provable.bigconj_e_singleton b
-        have h2 := Provable.bigdisj_i_singleton (a 🡒 b)
-        exact Provable.syll (Provable.syll h1 (Provable.k b a)) h2
+        refine ⟨by grind, ?_⟩
+        exists ⟨[b], by grind⟩
+        have h1 : Proof _ := bigconj_e_singleton b
+        have h2 : Proof _ := bigdisj_i_singleton (a 🡒 b)
+        exact syll (syll h1 (k b a)) h2
       contradiction
 
 theorem completeness {a : Fml} : Valid a -> Provable a := by
@@ -409,11 +404,12 @@ theorem completeness {a : Fml} : Valid a -> Provable a := by
     have cont : t.Consistent := by
       intro xs sub
       have eq : t.1 = ∅ := by dsimp
-      rw [eq, <- provable_iff_provableFromEmpty]
+      rw [eq]
+      simp only [ProvableFrom, Proof.Contextual]
       have fa : ∀ x ∈ xs, x = a := sub
-      let pxsa := Provable.bigdisj_e_same fa
+      let pxsa : Proof _ := bigdisj_e_same fa
       by_contra pxs
-      have : Provable a := Provable.mp pxsa pxs
+      have : Provable a := mp pxsa pxs.some.toHilbert |> Nonempty.intro
       contradiction
     let u := Tableau.extend_list t a.sub
     have subu : t ⊆ u := by
@@ -437,7 +433,7 @@ theorem completeness {a : Fml} : Valid a -> Provable a := by
     exists u
     exact ⟨subu, Tableau.consistent_is_disjoint conu, satu⟩
   have ⟨V, vtrue, vfalse⟩ := Tableau.realizable_iff_extendable.mpr extendable
-  rw [not_forall]
+  rw [Valid, not_forall]
   exists V
   have mem : a ∈ t.2 := by
     simp only [t, Set.mem_singleton_iff]

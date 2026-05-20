@@ -1,368 +1,323 @@
-import Logic.Classical.Syntax
+import Logic.Classical.Syntax.Basic
 
-inductive Provable : Fml -> Prop
-  | k (a b: Fml) : Provable (a 🡒 b 🡒 a)
-  | s (a b c: Fml) : Provable ((a 🡒 b 🡒 c) 🡒 (a 🡒 b) 🡒 (a 🡒 c))
-  | conj_i (a b: Fml) : Provable (a 🡒 b 🡒 a ⋏ b)
-  | conj_e1 (a b: Fml) : Provable (a ⋏ b 🡒 a)
-  | conj_e2 (a b: Fml) : Provable (a ⋏ b 🡒 b)
-  | disj_i1 (a b: Fml) : Provable (a 🡒 a ⋎ b)
-  | disj_i2 (a b: Fml) : Provable (b 🡒 a ⋎ b)
-  | disj_e (a b c: Fml) : Provable ((a 🡒 c) 🡒 (b 🡒 c) 🡒 (a ⋎ b 🡒 c))
-  | dne (a: Fml) : Provable (∼ ∼ a 🡒 a)
-  | mp {a b}: Provable (a 🡒 b) -> Provable a -> Provable b
+class Hilbert (L : Type) [Language L] (S : L -> Type) where
+  k (a b) : S (a 🡒 b 🡒 a)
+  s (a b c) : S ((a 🡒 b 🡒 c) 🡒 (a 🡒 b) 🡒 (a 🡒 c))
+  conj_i (a b) : S (a 🡒 b 🡒 a ⋏ b)
+  conj_e1 (a b) : S (a ⋏ b 🡒 a)
+  conj_e2 (a b) : S (a ⋏ b 🡒 b)
+  disj_i1 (a b) : S (a 🡒 a ⋎ b)
+  disj_i2 (a b) : S (b 🡒 a ⋎ b)
+  disj_e (a b c) : S ((a 🡒 c) 🡒 (b 🡒 c) 🡒 (a ⋎ b 🡒 c))
+  mp {a b} : S (a 🡒 b) -> S a -> S b
 
-@[grind .] lemma Provable.i (a : Fml) : Provable (a 🡒 a) := by
-  let h1 := k a (a 🡒 a)
-  let h2 := s a (a 🡒 a) a
-  let h3 := mp h2 h1
-  let h4 := k a a
+class Hilbert.Intuitionistic (L : Type) [Language L] (S : L -> Type) extends Hilbert L S where
+  exp (a) : S (⊥ 🡒 a)
+
+class Hilbert.Classical (L : Type) [Language L] (S : L -> Type)
+  extends Hilbert.Intuitionistic L S where
+  dne (a) : S (∼ ∼ a 🡒 a)
+
+@[grind] def Hilbert.i {L S} [Language L] [Hilbert L S]
+  (a : L) : S (a 🡒 a) := by
+  let h1 : S _ := k a (a 🡒 a)
+  let h2 : S _ := s a (a 🡒 a) a
+  let h3 : S _ := mp h2 h1
+  let h4 : S _ := k a a
   exact mp h3 h4
 
-@[grind .] lemma Provable.verum : Provable ⊤ := i ⊥
+@[grind] def Hilbert.verum {L S} [Language L] [Hilbert L S]
+  : S (top (L := L)) := i (bot (L := L))
 
-@[grind ->] lemma Provable.syll {a b c : Fml}
-  : Provable (a 🡒 b) -> Provable (b 🡒 c) -> Provable (a 🡒 c) := by
+@[grind] def Hilbert.syll {L S} [Language L] [Hilbert L S]
+  {a b c : L} : S (a 🡒 b) -> S (b 🡒 c) -> S (a 🡒 c) := by
   intro hab hbc
-  let habc := mp (k (b 🡒 c) a) hbc
-  let habac := mp (s a b c) habc
+  let hbc := mp (k (b 🡒 c) a) hbc
+  let habac := mp (s a b c) hbc
   exact mp habac hab
 
-@[grind .] lemma Provable.exp (a : Fml) : Provable (⊥ 🡒 a) := by
-  let h1 := k ⊥ (a 🡒 ⊥)
-  let h2 := dne a
-  exact syll h1 h2
+@[grind] def Hilbert.top_imp {L S} [Language L] [Hilbert L S]
+  {a : L} : S (⊤ 🡒 a) -> S a := by
+  intro hta
+  exact mp hta verum
 
-@[grind .] lemma Provable.top_imp {a : Fml} : Provable (⊤ 🡒 a) <-> Provable a := by
-  constructor
-  case mp =>
-    intro h
-    exact mp h verum
-  case mpr =>
-    intro h
-    exact mp (k a ⊤) h
+@[grind] def Hilbert.top_imp_rev {L S} [Language L] [Hilbert L S]
+  {a : L} : S a -> S (⊤ 🡒 a) := by
+  intro ha
+  exact mp (k a ⊤) ha
 
-@[grind .] lemma Provable.imp_flip {a b c : Fml}
-  : Provable (a 🡒 b 🡒 c) -> Provable (b 🡒 a 🡒 c) := by
+@[grind] def Hilbert.imp_exchange {L S} [Language L] [Hilbert L S]
+  {a b c : L} : S (a 🡒 b 🡒 c) -> S (b 🡒 a 🡒 c) := by
   intro habc
   let h1 := mp (s a b c) habc
-  let h2 := k b a
-  exact syll h2 h1
+  exact syll (k b a) h1
 
-@[grind ->] lemma Provable.imp_contract {a b : Fml} : Provable (a 🡒 a 🡒 b) -> Provable (a 🡒 b) := by
+@[grind] def Hilbert.imp_contract {L S} [Language L] [Hilbert L S]
+  {a b : L} : S (a 🡒 a 🡒 b) -> S (a 🡒 b) := by
   intro haab
   let h1 := mp (s a a b) haab
   exact mp h1 (i a)
 
-@[grind =] lemma Provable.imp_curry {a b c : Fml}
-  : Provable (a 🡒 b 🡒 c) <-> Provable (a ⋏ b 🡒 c) := by
-  constructor
-  case mpr =>
-    intro h
-    let h1 := mp (k (a ⋏ b 🡒 c) b) h
-    let h2 := mp (s b (a ⋏ b) c) h1
-    let h3 := s a (b 🡒 a ⋏ b) (b 🡒 c)
-    let h4 := mp (k ((b 🡒 a ⋏ b) 🡒 (b 🡒 c)) a) h2
-    exact mp (mp h3 h4) (conj_i a b)
-  case mp =>
-    intro h
-    let h1 := s (a ⋏ b) a (b 🡒 c)
-    let h2 := mp (k (a 🡒 (b 🡒 c)) (a ⋏ b)) h
-    let h3 := mp (mp h1 h2) (conj_e1 a b)
-    let h4 := s (a ⋏ b) b c
-    exact mp (mp h4 h3) (conj_e2 a b)
+@[grind] def Hilbert.curry {L S} [Language L] [Hilbert L S]
+  {a b c : L} : S (a ⋏ b 🡒 c) -> S (a 🡒 b 🡒 c) := by
+  intro h
+  let h1 := mp (k (a ⋏ b 🡒 c) b) h
+  let h2 := mp (s b (a ⋏ b) c) h1
+  let h3 : S _ := s a (b 🡒 a ⋏ b) (b 🡒 c)
+  let h4 := mp (k ((b 🡒 a ⋏ b) 🡒 (b 🡒 c)) a) h2
+  exact mp (mp h3 h4) (conj_i a b)
 
-@[grind ->] lemma Provable.conj_i_alt {a b c : Fml}
-  : Provable (a 🡒 b) -> Provable (a 🡒 c) -> Provable (a 🡒 b ⋏ c) := by
+@[grind] def Hilbert.uncurry {L S} [Language L] [Hilbert L S]
+  {a b c : L} : S (a 🡒 b 🡒 c) -> S (a ⋏ b 🡒 c) := by
+  intro h
+  let h1 : S _ := s (a ⋏ b) a (b 🡒 c)
+  let h2 := mp (k (a 🡒 (b 🡒 c)) (a ⋏ b)) h
+  let h3 := mp (mp h1 h2) (conj_e1 a b)
+  let h4 : S _ := s (a ⋏ b) b c
+  exact mp (mp h4 h3) (conj_e2 a b)
+
+@[grind] def Hilbert.conj_i_alt {L S} [Language L] [Hilbert L S]
+  {a b c : L} : S (a 🡒 b) -> S (a 🡒 c) -> S (a 🡒 b ⋏ c) := by
   intro hab hac
-  let h1 := conj_i b c
+  let h1 : S _ := conj_i b c
   let h2 := syll hab h1
-  let h3 := syll hac (imp_flip h2)
+  let h3 := syll hac (imp_exchange h2)
   exact imp_contract h3
 
-@[grind .] lemma Provable.axiomatized_mp (a b : Fml) : Provable (a ⋏ (a 🡒 b) 🡒 b) := by
-  let h1 := imp_flip (i (a 🡒 b))
-  exact imp_curry.mp h1
+@[grind] def Hilbert.axiomatized_mp {L S} [Language L] [Hilbert L S]
+  (a b : L) : S (a ⋏ (a 🡒 b) 🡒 b) := by
+  exact uncurry (imp_exchange (i (a 🡒 b)))
 
-@[grind .] lemma Provable.bigconj_e {xs : List Fml} {x : Fml} : x ∈ xs -> Provable (⋏ xs 🡒 x) := by
+@[grind] def Hilbert.bigconj_e {L S} [DecidableEq L] [Language L] [Hilbert L S]
+  {xs : List L} {x : L} : x ∈ xs -> S (⋏ xs 🡒 x) := by
   intro xmem
   induction xs with
   | nil => contradiction
   | cons head tail ih =>
     rw [List.mem_cons] at xmem
-    cases xmem with
-    | inl e =>
-      rw [e]
+    if eq : x = head then
+      rw [eq]
       exact conj_e1 head (⋏ tail)
-    | inr xmem =>
-      let ptail := conj_e2 head (⋏ tail)
-      exact syll ptail (ih xmem)
+    else
+      apply Or.resolve_left (na := eq) at xmem
+      let htail : S _ := conj_e2 head (⋏ tail)
+      exact syll htail (ih xmem)
 
-@[grind .] lemma Provable.bigconj_e_singleton (x : Fml) : Provable (⋏ [x] 🡒 x) := by
-  have mem : x ∈ [x] := by simp
-  exact bigconj_e mem
+@[grind] def Hilbert.bigconj_e_singleton {L S} [Language L] [Hilbert L S]
+  (x : L) : S (⋏ [x] 🡒 x) := by
+  rw [bigconj, List.foldr_cons, List.foldr_nil]
+  exact conj_e1 x ⊤
 
-@[grind .] lemma Provable.bigconj_e_conj (x y : Fml) : Provable (⋏ [x, y] 🡒 x ⋏ y) := by
-    rw [Fml.bigconj, List.foldr_cons, List.foldr_cons, List.foldr_nil]
-    rw [<- Provable.imp_curry]
-    apply Provable.imp_flip
-    rw [<- Provable.imp_curry]
-    apply Provable.imp_flip
-    rw [Provable.top_imp]
-    apply Provable.imp_flip
-    rw [Provable.imp_curry]
-    exact Provable.i (x ⋏ y)
+@[grind] def Hilbert.bigconj_e_conj {L S} [Language L] [Hilbert L S]
+  (x y : L) : S (⋏ [x, y] 🡒 x ⋏ y) := by
+  rw [bigconj, List.foldr_cons, List.foldr_cons, List.foldr_nil]
+  apply uncurry
+  apply imp_exchange
+  apply uncurry
+  apply imp_exchange
+  apply top_imp_rev
+  apply imp_exchange
+  exact conj_i x y
 
-@[grind ->] lemma Provable.bigconj_e_many {xs ys : List Fml}
-  : ys ⊆ xs -> Provable (⋏ xs 🡒 ⋏ ys) := by
+@[grind] def Hilbert.bigconj_e_many {L S} [DecidableEq L] [Language L] [Hilbert L S]
+  {xs ys : List L} : ys ⊆ xs -> S (⋏ xs 🡒 ⋏ ys) := by
   intro sub
   induction ys with
   | nil =>
-    exact mp (k ⊤ (⋏ xs)) verum
+    exact mp (k top (⋏ xs)) verum
   | cons head tail ih =>
     rw [List.cons_subset] at sub
     have subt : tail ⊆ xs := by
       intro y mem
       exact sub.right mem
     let ih := ih subt
-    let phead := bigconj_e sub.left
-    exact conj_i_alt phead ih
+    let hhead : S _ := bigconj_e sub.left
+    exact conj_i_alt hhead ih
 
-@[grind ->] lemma Provable.bigdisj_i {xs : List Fml} {x : Fml} : x ∈ xs -> Provable (x 🡒 ⋎ xs) := by
+@[grind] def Hilbert.bigdisj_i {L S} [DecidableEq L] [Language L] [Hilbert L S]
+  {xs : List L} {x : L} : x ∈ xs -> S (x 🡒 ⋎ xs) := by
   intro xmem
   induction xs with
   | nil => contradiction
   | cons head tail ih =>
     rw [List.mem_cons] at xmem
-    cases xmem with
-    | inl e =>
-      rw [e]
+    if eq : x = head then
+      rw [eq]
       exact disj_i1 head (⋎ tail)
-    | inr xmem =>
-      let ptail := disj_i2 head (⋎ tail)
-      exact syll (ih xmem) ptail
+    else
+      apply Or.resolve_left (na := eq) at xmem
+      let htail : S _ := disj_i2 head (⋎ tail)
+      exact syll (ih xmem) htail
 
-@[grind .] lemma Provable.bigdisj_i_singleton (x : Fml) : Provable (x 🡒 ⋎ [x]) := by
-  have mem : x ∈ [x] := by simp
-  exact bigdisj_i mem
+@[grind] def Hilbert.bigdisj_i_singleton {L S} [Language L] [Hilbert L S]
+  (x : L) : S (x 🡒 ⋎ [x]) := by
+  rw [bigdisj, List.foldr_cons, List.foldr_nil]
+  exact disj_i1 x bot
 
-@[grind .] lemma Provable.bigdisj_i_disj (x y : Fml) : Provable (x ⋎ y 🡒 ⋎ [x, y]) := by
-  rw [Fml.bigdisj, List.foldr_cons, List.foldr_cons, List.foldr_nil]
-  have h3 := Provable.disj_e x y (x ⋎ y ⋎ ⊥)
-  have h4 := Provable.mp h3 (Provable.disj_i1 x (y ⋎ ⊥))
-  have h5 : Provable (y 🡒 x ⋎ (y ⋎ ⊥)) := by
-    have h6 := Provable.disj_i1 y ⊥
-    have h7 := Provable.disj_i2 x (y ⋎ ⊥)
-    exact Provable.syll h6 h7
-  exact Provable.mp h4 h5
+@[grind] def Hilbert.bigdisj_i_disj {L S} [Language L] [Hilbert L S]
+  (x y : L) : S (x ⋎ y 🡒 ⋎ [x, y]) := by
+  rw [bigdisj, List.foldr_cons, List.foldr_cons, List.foldr_nil]
+  have h3 : S _ := disj_e x y (x ⋎ y ⋎ ⊥)
+  have h4 : S _ := mp h3 (disj_i1 x (y ⋎ ⊥))
+  have h5 : S (y 🡒 x ⋎ (y ⋎ ⊥)) := by
+    have h6 : S _ := disj_i1 y ⊥
+    have h7 : S _ := disj_i2 x (y ⋎ ⊥)
+    exact syll h6 h7
+  exact mp h4 h5
 
-@[grind ->] lemma Provable.bigdisj_i_many {xs ys : List Fml}
-  : ys ⊆ xs -> Provable (⋎ ys 🡒 ⋎ xs) := by
+@[grind] def Hilbert.bigdisj_i_many {L S} [DecidableEq L] [Language L] [Hilbert.Intuitionistic L S]
+  {xs ys : List L} : ys ⊆ xs -> S (⋎ ys 🡒 ⋎ xs) := by
   intro sub
   induction ys with
   | nil =>
-    rw [Fml.bigdisj, List.foldr_nil]
-    exact exp (⋎ xs)
+    rw [bigdisj, List.foldr_nil]
+    exact Intuitionistic.exp (⋎ xs)
   | cons head tail ih =>
     rw [List.cons_subset] at sub
     have subt : tail ⊆ xs := by
       intro y mem
       exact sub.right mem
     let ih := ih subt
-    let phead := bigdisj_i sub.left
-    let h := disj_e head (⋎ tail) (⋎ xs)
-    exact mp (mp h phead) ih
+    let hhead : S _ := bigdisj_i sub.left
+    let h : S _ := disj_e head (⋎ tail) (⋎ xs)
+    exact mp (mp h hhead) ih
 
-@[grind .] lemma Provable.bigdisj_e_same {a : Fml} {xs : List Fml}
-  : (∀ x ∈ xs, x = a) -> Provable (⋎ xs 🡒 a) := by
+@[grind] def Hilbert.bigdisj_e_same {L S} [Language L] [Hilbert.Intuitionistic L S]
+  {a : L} {xs : List L} : (∀ x ∈ xs, x = a) -> S (⋎ xs 🡒 a) := by
   intro forall_eq_a
   induction xs with
   | nil =>
-    rw [Fml.bigdisj_empty_is_bot]
-    exact Provable.exp a
-  | cons x xs ih =>
-    have eq : x = a := by
-      specialize forall_eq_a x
+    rw [bigdisj_empty_is_bot]
+    exact Intuitionistic.exp a
+  | cons head tail ih =>
+    have eq : head = a := by
+      specialize forall_eq_a head
       apply forall_eq_a
       rw [List.mem_cons]
-      exact Or.inl (refl x)
+      exact Or.inl (refl head)
     rw [eq]
-    have forall_eq_a : ∀ y ∈ xs, y = a := by
-      intro y ymem
-      have ymem : y ∈ x :: xs := by
-        rw [List.mem_cons]
-        exact Or.inr ymem
-      specialize forall_eq_a y
-      exact forall_eq_a ymem
+    have forall_eq_a : ∀ y ∈ tail, y = a := by grind
     let ih := ih forall_eq_a
-    exact mp (mp (disj_e a (⋎ xs) a) (i a)) ih
+    exact mp (mp (disj_e a (⋎ tail) a) (i a)) ih
 
-@[grind ->] lemma Provable.bigconj_to_bigdisj {a : Fml} {xs ys : List Fml}
-  : a ∈ xs -> a ∈ ys -> Provable (⋏ xs 🡒 ⋎ ys) := by
-  intro memx memy
-  let lhs := bigconj_e memx
-  let rhs := bigdisj_i memy
+@[grind] def Hilbert.bigconj_to_bigdisj {L S} [DecidableEq L] [Language L] [Hilbert L S]
+  {a : L} {xs ys : List L} : a ∈ xs -> a ∈ ys -> S (⋏ xs 🡒 ⋎ ys) := by
+  intro memxs memys
+  let lhs : S _ := bigconj_e memxs
+  let rhs : S _ := bigdisj_i memys
   exact syll lhs rhs
 
-@[simp] abbrev ProvableFrom (Γ : Theory) (a : Fml) : Prop
-  := ∃ xs, List.IsSubset xs Γ ∧ Provable (⋏ xs 🡒 a)
+@[simp] abbrev Hilbert.Contextual {L} (S) [Language L] [Hilbert L S]
+  (Γ : Set L) (a : L) := Σ xs : List.SubsetOf Γ, S (⋏ xs 🡒 a)
 
-theorem deduction {Γ : Theory} {a b : Fml}
-  : ProvableFrom Γ (a 🡒 b) <-> ProvableFrom (Γ ∪ {a}) b := by
-  constructor
-  case mpr =>
-    intro ⟨xs, ⟨sub, p⟩⟩
-    let nota (x: Fml) := x ≠ a
-    let ys := List.remove xs a
-    exists ys
-    constructor
-    case right =>
-      have ys_reord : xs ⊆ a :: ys := by grind
-      let h1 := Provable.bigconj_e_many ys_reord
-      let h2 := Provable.syll h1 p
-      exact Provable.imp_flip (Provable.imp_curry.mpr h2)
-    case left =>
-      intro y ymem
-      specialize sub y
-      have ys_sub_xs : ys ⊆ xs := by grind
-      let ymem' := sub (ys_sub_xs ymem)
-      rw [Set.mem_union] at ymem'
-      cases ymem' with
-      | inl h => exact h
-      | inr e =>
-        have a_notin_ys : a ∉ ys := by grind
-        rw [Set.mem_singleton_iff] at e
-        have : y ∉ ys := by
-          rw [e]
-          exact a_notin_ys
-        contradiction
-  case mp =>
-    intro ⟨xs, ⟨sub, p⟩⟩
-    exists a :: xs
-    constructor
-    case right =>
-      exact p |> Provable.imp_flip |> Provable.imp_curry.mp
-    case left =>
-      intro x xmem
-      rw [List.mem_cons] at xmem
-      rw [Set.mem_union]
-      cases xmem with
-      | inl e =>
-        right
-        rw [Set.mem_singleton_iff]
-        exact e
-      | inr xmem' =>
-        left
-        specialize sub x
-        exact sub xmem'
+@[simp] abbrev Hilbert.Contextual.toHilbert {L S} [Language L] [Hilbert L S]
+  {a : L} : Contextual S ∅ a -> S a := by
+  intro ⟨xs, ha⟩
+  have eq : xs.val = [] := List.IsSubset_empty_is_nil xs.property
+  rw [eq, bigconj_empty_is_top] at ha
+  exact mp ha Hilbert.verum
 
-@[grind =] lemma provable_iff_provableFromEmpty {a : Fml} : Provable a <-> ProvableFrom ∅ a := by
-  constructor
-  case mp =>
-    intro l
-    exists []
-    refine ⟨by trivial, ?_⟩
-    exact Provable.mp (Provable.k a (⊥ 🡒 ⊥)) l
-  case mpr =>
-    intro ⟨xs, ⟨hPL, hPR⟩⟩
-    have p : Provable ((⊥ 🡒 ⊥) 🡒 a) := by
-      have e : xs = [] := by
-        by_contra ne
-        specialize hPL (xs.head ne)
-        have : xs.head ne ∈ xs := List.head_mem ne
-        contradiction
-      rw [e] at hPR
-      exact hPR
-    exact Provable.mp p (Provable.i ⊥)
+@[grind] def Hilbert.Contextual.deduction_left {L S} [Language L] [Hilbert L S]
+  {Γ : Set L} {a b : L} : Contextual S Γ (a 🡒 b) -> Contextual S (Γ ∪ {a}) b := by
+  intro ⟨⟨xs, sub⟩, h⟩
+  let xs' := a :: xs
+  let sub' : xs'.IsSubset (Γ ∪ {a}) := by grind
+  let h' : S (⋏ xs' 🡒 b) :=
+    h |> Hilbert.imp_exchange |> Hilbert.uncurry
+  exists ⟨xs', sub'⟩
 
-@[grind .] lemma ProvableFrom.initial {Γ : Theory} {a : Fml} : a ∈ Γ -> ProvableFrom Γ a := by
+@[grind] def Hilbert.Contextual.deduction_right {L S} [DecidableEq L] [Language L] [Hilbert L S]
+  {Γ : Set L} {a b : L} : Contextual S (Γ ∪ {a}) b -> Contextual S Γ (a 🡒 b) := by
+  intro ⟨⟨xs, sub⟩, h⟩
+  let xs' := List.remove xs a
+  let sub' : xs'.IsSubset Γ := by grind
+  exists ⟨xs', sub'⟩
+  have reord : xs ⊆ a :: xs' := by grind
+  let h1 : S _ := Hilbert.bigconj_e_many reord
+  let h2 := Hilbert.syll h1 h
+  exact h2 |> Hilbert.curry |> Hilbert.imp_exchange
+
+@[grind] def Hilbert.Contextual.initial {L S} [Language L] [Hilbert L S]
+  {Γ : Set L} {a : L} : a ∈ Γ -> Contextual S Γ a := by
   intro amem
-  exists [a]
-  constructor
-  case left =>
-    intro b bmem
-    rw [List.mem_singleton] at bmem
-    rw [bmem]
-    exact amem
-  case right =>
-    exact Provable.conj_e1 a ⊤
+  exists ⟨[a], (by grind)⟩
+  exact Hilbert.conj_e1 a ⊤
 
-lemma ProvableFrom.weakening {Γ Δ : Theory} {a : Fml}
-  : Γ ⊆ Δ -> ProvableFrom Γ a -> ProvableFrom Δ a := by
-  intro sub_Γ ⟨xs, ⟨sub_xs, p⟩⟩
-  have sub_xs : List.IsSubset xs Δ := by
-    intro x mem
-    exact Set.mem_of_subset_of_mem sub_Γ (sub_xs x mem)
-  exists xs
+@[grind] def Hilbert.Contextual.weakening {L S} [Language L] [Hilbert L S]
+  {Γ Δ : Set L} {a : L} : Γ ⊆ Δ -> Contextual S Γ a -> Contextual S Δ a := by
+  intro Γ_sub_Δ ⟨⟨xs, xs_sub_Γ⟩, h⟩
+  exists ⟨xs, (by grind)⟩
 
-lemma ProvableFrom.mp {Γ : Theory} {a b : Fml}
-  : ProvableFrom Γ (a 🡒 b) -> ProvableFrom Γ a ->  ProvableFrom Γ b := by
-  intro ⟨xsab, ⟨sub_xsab, pab⟩⟩ ⟨xsa, ⟨sub_xsa, pa⟩⟩
-  let xsb := xsa ++ xsab
-  have sub_xsb : List.IsSubset xsb Γ := by
-    intro x xmem
-    rw [List.mem_append] at xmem
-    cases xmem with
-    | inl hl =>
-      specialize sub_xsa x
-      exact sub_xsa hl
-    | inr hr =>
-      specialize sub_xsab x
-      exact sub_xsab hr
-  exists xsb
-  refine ⟨sub_xsb, ?_⟩
-  have sub_xsa_xsb : xsa ⊆ xsb := List.subset_append_left xsa xsab
-  have sub_xsab_xsb : xsab ⊆ xsb := List.subset_append_right xsa xsab
-  let ha  := Provable.syll (Provable.bigconj_e_many sub_xsa_xsb) pa
-  let hab := Provable.syll (Provable.bigconj_e_many sub_xsab_xsb) pab
-  let habb := Provable.conj_i_alt ha hab
-  exact Provable.syll habb (Provable.axiomatized_mp a b)
+@[grind] def Hilbert.Contextual.mp {L S} [DecidableEq L] [Language L] [Hilbert L S]
+  {Γ : Set L} {a b : L} : Contextual S Γ (a 🡒 b) -> Contextual S Γ a -> Contextual S Γ b := by
+  intro ⟨⟨xs, xs_sub_Γ⟩, hab⟩ ⟨⟨ys, ys_sub_Γ⟩, ha⟩
+  let zs := xs ++ ys
+  exists ⟨zs, (by grind)⟩
+  have h1 : S (⋏ zs 🡒 ⋏ xs) := Hilbert.bigconj_e_many (by grind)
+  have h2 : S (⋏ zs 🡒 ⋏ ys) := Hilbert.bigconj_e_many (by grind)
+  have hab' := Hilbert.syll h1 hab
+  have ha' := Hilbert.syll h2 ha
+  have habb' := Hilbert.conj_i_alt ha' hab'
+  exact Hilbert.syll habb' (Hilbert.axiomatized_mp a b)
 
-lemma ProvableFrom.syll {Γ : Theory} {a b c : Fml}
-: ProvableFrom Γ (a 🡒 b) -> ProvableFrom Γ (b 🡒 c) -> ProvableFrom Γ (a 🡒 c) := by
-  intro pab pbc
-  rw [deduction]
-  rw [deduction] at pab
+@[grind] def Hilbert.Contextual.syll {L S} [DecidableEq L] [Language L] [Hilbert L S]
+  {Γ : Set L} {a b c : L}
+  : Contextual S Γ (a 🡒 b) -> Contextual S Γ (b 🡒 c) -> Contextual S Γ (a 🡒 c) := by
+  intro cab cbc
+  apply deduction_right
+  have cab' : Contextual S (Γ ∪ {a}) b := deduction_left cab
   have sub : Γ ⊆ Γ ∪ {a} := by simp
-  let pabc := weakening sub pbc
-  exact mp pabc pab
+  let cabc := weakening sub cbc
+  exact mp cabc cab'
 
-lemma Provable.to_ProvableFrom {a} (Γ : Theory) (p : Provable a) : ProvableFrom Γ a := by
-  rw [provable_iff_provableFromEmpty] at p
-  have sub : ∅ ⊆ Γ := by simp only [Set.empty_subset]
-  exact ProvableFrom.weakening sub p
+@[simp] abbrev Hilbert.toContextual {L S} [Language L] [Hilbert L S]
+  {a : L} (Γ : Set L) : S a -> Contextual S Γ a := by
+  intro ha
+  exists ⟨[], (by simp)⟩
+  exact mp (k a (⊥ 🡒 ⊥)) ha
 
-@[grind .] lemma Provable.em (a : Fml) : Provable (a ⋎ ∼ a) := by
+@[grind] def Hilbert.em {L S} [DecidableEq L] [Language L] [Hilbert.Classical L S]
+  (a : L) : S (a ⋎ ∼ a) := by
   let A := a ⋎ ∼ a
-  let pnA : ProvableFrom {∼ A} (∼ A) := ProvableFrom.initial (by simp)
-  let pna : ProvableFrom {∼ A} (∼ a) :=
-    ProvableFrom.syll
-      (to_ProvableFrom {∼ A} (disj_i1 a (∼ a)))
-      pnA
-  let pa : ProvableFrom {∼ A} A :=
-    ProvableFrom.mp
-      (to_ProvableFrom {∼ A} (disj_i2 a (∼ a)))
-      pna
-  let pb : ProvableFrom {∼ A} ⊥ := ProvableFrom.mp pnA pa
-  let pnnA : Provable (∼ ∼ A) :=
-    provable_iff_provableFromEmpty.mpr <|
-      deduction.mpr (ProvableFrom.weakening (by simp) pb)
-  exact mp (dne A) pnnA
+  let cnA : Contextual S {∼ A} (∼ A) := Contextual.initial (by simp)
+  let cna : Contextual S {∼ A} (∼ a) :=
+    Contextual.syll
+      (disj_i1 a (∼ a) |> toContextual {∼ A})
+      cnA
+  let ca : Contextual S {∼ A} A :=
+    Contextual.mp
+      (disj_i2 a (∼ a) |> toContextual {∼ A})
+      cna
+  let cb : Contextual S {∼ A} ⊥ :=
+    Contextual.mp cnA ca
+  let cnnA : S (∼ ∼ A) := by
+    apply Contextual.toHilbert
+    rw [neg]
+    apply Contextual.deduction_right
+    exact cb |> Contextual.weakening (by simp)
+  exact mp (Classical.dne A) cnnA
 
-@[grind .] lemma Provable.lin (a b : Fml) : Provable (a ⋎ (a 🡒 b)) := by
-  let p1 : Provable (a 🡒 a ⋎ (a 🡒 b)) := disj_i1 a (a 🡒 b)
-  let p2 : ProvableFrom (∅ ∪ {a 🡒 ⊥} ∪ {a}) ⊥ :=
+@[grind] def Hilbert.lin {L S} [DecidableEq L] [Language L] [Hilbert.Classical L S]
+  (a b : L) : S (a ⋎ (a 🡒 b)) := by
+  let h1 : S (a 🡒 a ⋎ (a 🡒 b)) := disj_i1 a (a 🡒 b)
+  let c2 : Contextual S (∅ ∪ {a 🡒 ⊥} ∪ {a}) ⊥ :=
     axiomatized_mp a ⊥
-    |> imp_curry.mpr |> imp_flip
-    |> to_ProvableFrom ∅
-    |> deduction.mp |> deduction.mp
-  let p3 : ProvableFrom (∅ ∪ {a 🡒 ⊥}) (a 🡒 b) :=
-    ProvableFrom.syll (deduction.mpr p2) (exp b |> to_ProvableFrom (∅ ∪ {a 🡒 ⊥}))
-  let p4 : ProvableFrom (∅ ∪ {a 🡒 ⊥}) (a ⋎ (a 🡒 b)) :=
-    ProvableFrom.mp (disj_i2 a (a 🡒 b) |> to_ProvableFrom (∅ ∪ {a 🡒 ⊥})) p3
-  let p5 : Provable ((a 🡒 ⊥) 🡒 a ⋎ (a 🡒 b)) :=
-    p4 |> deduction.mpr |> provable_iff_provableFromEmpty.mpr
-  let p6 :=
-    disj_e a (a 🡒 ⊥) (a ⋎ (a 🡒 b))
-  let p7 := mp (mp p6 p1) p5
-  exact mp p7 (em a)
+    |> curry |> imp_exchange
+    |> toContextual ∅
+    |> Contextual.deduction_left
+    |> Contextual.deduction_left
+  let c3 : Contextual S (∅ ∪ {a 🡒 ⊥}) (a 🡒 b) :=
+    Contextual.syll
+      (Contextual.deduction_right c2)
+      (Intuitionistic.exp b |> toContextual (∅ ∪ {a 🡒 ⊥}))
+  let c4 : Contextual S (∅ ∪ {a 🡒 ⊥}) (a ⋎ (a 🡒 b)) :=
+    Contextual.mp
+      (disj_i2 a (a 🡒 b) |> toContextual (∅ ∪ {a 🡒 ⊥}))
+      c3
+  let h5 : S ((a 🡒 ⊥) 🡒 a ⋎ (a 🡒 b)) :=
+    c4
+    |> Contextual.deduction_right
+    |> Contextual.toHilbert
+  let h6 : S _ := disj_e a (a 🡒 ⊥) (a ⋎ (a 🡒 b))
+  let h7 : S _ := mp (mp h6 h1) h5
+  exact mp h7 (em a)

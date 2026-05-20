@@ -1,7 +1,7 @@
 import Std
 import Logic.Utils.List
-import Logic.Classical.Syntax
-import Logic.Classical.Semantics
+import Logic.Classical.Syntax.Concrete
+import Logic.Classical.Semantics.Concrete
 
 abbrev Tableau := Set Fml × Set Fml
 
@@ -49,7 +49,7 @@ abbrev Tableau.iUnion {ι} (s : ι -> Tableau) : Tableau
     exact Set.subset_iUnion (Prod.snd ∘ s) i
 
 abbrev Tableau.Disjoint (t : Tableau) :=
-  (t.fst ∩ t.snd) = ∅ ∧ ⊥ ∉ t.fst
+  (t.fst ∩ t.snd) = ∅ ∧ bot ∉ t.fst
 
 @[simp, grind <-] lemma Tableau.disjoint_imp_not_mem_both {t : Tableau} (a : Fml)
   : t.Disjoint -> ¬(a ∈ t.1 ∧ a ∈ t.2) := by
@@ -62,7 +62,7 @@ abbrev Tableau.Disjoint (t : Tableau) :=
   contradiction
 
 abbrev Tableau.RealizedBy (t : Tableau) (V : Valuation) :=
-  (∀ a ∈ t.fst, V.isTrue a) ∧ (∀ b ∈ t.snd, ¬ V.isTrue b)
+  (∀ a ∈ t.fst, V.IsTrue a) ∧ (∀ b ∈ t.snd, ¬ V.IsTrue b)
 
 abbrev Tableau.Realizable (t : Tableau) := ∃ V, t.RealizedBy V
 
@@ -106,8 +106,8 @@ theorem Tableau.realizable_iff_extendable {t : Tableau} :
   constructor
   case mp =>
     intro ⟨V, re⟩
-    let Γ := { a : Fml | V.isTrue a }
-    let Δ := { a : Fml | ¬ V.isTrue a }
+    let Γ := { a : Fml | V.IsTrue a }
+    let Δ := { a : Fml | ¬ V.IsTrue a }
     let t': Tableau := (Γ, Δ)
     exists t'
     have e1 : t'.1 = Γ := by rw [Prod.fst_eq_iff]
@@ -133,40 +133,47 @@ theorem Tableau.realizable_iff_extendable {t : Tableau} :
         rw [Set.eq_empty_iff_forall_notMem, not_forall] at h
         obtain ⟨x, cond⟩ := h
         rw [Set.not_notMem, e1, e2, Set.mem_inter_iff, Set.mem_setOf, Set.mem_setOf] at cond
-        have : V.isTrue x := cond.left
-        have : ¬ V.isTrue x := cond.right
+        have : V.IsTrue x := cond.left
+        have : ¬ V.IsTrue x := cond.right
         contradiction
       case right =>
-        rw [e1, Set.mem_setOf_eq, Valuation.isTrue]
+        rw [e1, Set.mem_setOf_eq, Valuation.IsTrue.eq_def]
+        dsimp
         trivial
     have saturated : t'.Saturated := by
       constructor
       case conjL =>
         intro x y
-        rw [e1, Set.mem_setOf_eq, Set.mem_setOf_eq, Set.mem_setOf_eq, Valuation.isTrue]
+        rw [e1, Set.mem_setOf_eq, Set.mem_setOf_eq, Set.mem_setOf_eq, Valuation.IsTrue.eq_def]
         exact id
       case conjR =>
         intro x y
-        rw [e2, Set.mem_setOf_eq, Set.mem_setOf_eq, Set.mem_setOf_eq, Valuation.isTrue, not_and_or]
+        rw [
+          e2, Set.mem_setOf_eq, Set.mem_setOf_eq, Set.mem_setOf_eq,
+          Valuation.IsTrue.eq_def, not_and_or
+        ]
         exact id
       case disjL =>
         intro x y
-        rw [e1, Set.mem_setOf_eq, Set.mem_setOf_eq, Set.mem_setOf_eq, Valuation.isTrue]
+        rw [e1, Set.mem_setOf_eq, Set.mem_setOf_eq, Set.mem_setOf_eq, Valuation.IsTrue.eq_def]
         exact id
       case disjR =>
         intro x y
-        rw [e2, Set.mem_setOf_eq, Set.mem_setOf_eq, Set.mem_setOf_eq, Valuation.isTrue, not_or]
+        rw [
+          e2, Set.mem_setOf_eq, Set.mem_setOf_eq, Set.mem_setOf_eq,
+          Valuation.IsTrue.eq_def, not_or
+        ]
         exact id
       case impL =>
         intro x y
         rw [
           e1, e2, Set.mem_setOf_eq, Set.mem_setOf_eq, Set.mem_setOf_eq,
-          Valuation.isTrue, <- imp_iff_not_or
+          Valuation.IsTrue.eq_def, <- imp_iff_not_or
         ]
         exact id
       case impR =>
         intro x y
-        rw [e1, e2, Set.mem_setOf_eq, Set.mem_setOf_eq, Set.mem_setOf_eq, Valuation.isTrue]
+        rw [e1, e2, Set.mem_setOf_eq, Set.mem_setOf_eq, Set.mem_setOf_eq, Valuation.IsTrue.eq_def]
         push Not
         exact id
     exact ⟨sub, Disjoint, saturated⟩
@@ -175,7 +182,7 @@ theorem Tableau.realizable_iff_extendable {t : Tableau} :
     let V: Valuation := fun p => *p ∈ t'.fst
     exists V
     suffices hyp : t'.RealizedBy V from realizes_sub sub hyp
-    suffices hyp : (∀ a, (a ∈ t'.fst -> V.isTrue a) ∧ (a ∈ t'.snd -> ¬ V.isTrue a)) from by
+    suffices hyp : (∀ a, (a ∈ t'.fst -> V.IsTrue a) ∧ (a ∈ t'.snd -> ¬ V.IsTrue a)) from by
       dsimp only [Tableau.RealizedBy]
       rw [<- forall_and]
       exact hyp
@@ -185,11 +192,11 @@ theorem Tableau.realizable_iff_extendable {t : Tableau} :
       constructor
       case left =>
         intro _
-        have : ⊥ ∉ t'.fst := Disjoint.right
+        have : bot ∉ t'.fst := Disjoint.right
         contradiction
       case right =>
         intro _
-        rw [Valuation.isTrue]
+        rw [Valuation.IsTrue]
         trivial
     | var q =>
       constructor
@@ -217,7 +224,7 @@ theorem Tableau.realizable_iff_extendable {t : Tableau} :
       case right =>
         intro amem
         apply saturated.conjR at amem
-        rw [Valuation.isTrue, not_and_or]
+        rw [Valuation.IsTrue, not_and_or]
         cases amem with
         | inl bmem => exact Or.inl (hb.right bmem)
         | inr cmem => exact Or.inr (hc.right cmem)
@@ -236,7 +243,7 @@ theorem Tableau.realizable_iff_extendable {t : Tableau} :
       case right =>
         intro amem
         apply saturated.disjR at amem
-        rw [Valuation.isTrue, not_or]
+        rw [Valuation.IsTrue, not_or]
         exact ⟨hb.right amem.left, hc.right amem.right⟩
     | imp b c hb hc =>
       constructor
@@ -245,21 +252,21 @@ theorem Tableau.realizable_iff_extendable {t : Tableau} :
         apply saturated.impL at amem
         cases amem with
         | inl bmem2 =>
-          rw [Valuation.isTrue]
+          rw [Valuation.IsTrue]
           intro tb
           have ntb := hb.right bmem2
           contradiction
         | inr cmem1 =>
-          rw [Valuation.isTrue]
+          rw [Valuation.IsTrue]
           intro _
           exact hc.left cmem1
       case right =>
         intro amem
         apply saturated.impR at amem
-        rw [Valuation.isTrue]
+        rw [Valuation.IsTrue]
         by_contra b_imp_c
-        have : ¬ V.isTrue c := hc.right amem.right
-        have : V.isTrue c := hb.left amem.left |> b_imp_c
+        have : ¬ V.IsTrue c := hc.right amem.right
+        have : V.IsTrue c := hb.left amem.left |> b_imp_c
         contradiction
 
 @[simp, grind] abbrev Tableau.pushL (t : Tableau) (a : Fml) : Tableau := (t.1 ∪ {a}, t.2)
